@@ -12,7 +12,7 @@ class Command(BaseCommand):
             Car(
                 unique_number=f"{random.randint(1000, 9999)}{random.choice('ABCDEFGHIJKLMNOPQRSTUVWXYZ')}",
                 current_location=random.choice(locations),
-                capacity=random.randint(1, 1000)
+                capacity=random.randint(500, 1000)
             )
             for _ in range(20)
         ]

@@ -1,26 +1,22 @@
-from django.db.models import Count, Subquery, OuterRef
-from django.db.models import Q
-from django.shortcuts import get_object_or_404
-from geopy.distance import distance as geopy_distance
+from django.db.models import Count, Q
 from rest_framework import generics, status
 from rest_framework.response import Response
 
-from .models import Location, Car, Cargo
-from .serializers import (
-    LocationSerializer,
-    CarSerializer,
-    CargoSerializer,
-    CargoCreateSerializer,
-    CargoUpdateSerializer,
-)
+from .models import Location, Car, Cargo, CargoCar
+from .serializers import LocationSerializer, CarSerializer, CargoSerializer, CargoCarSerializer
 
 
-class LocationListCreateView(generics.ListCreateAPIView):
+class LocationListView(generics.ListCreateAPIView):
     queryset = Location.objects.all()
     serializer_class = LocationSerializer
 
 
-class CarListCreateView(generics.ListCreateAPIView):
+class CarListView(generics.ListCreateAPIView):
+    queryset = Car.objects.all()
+    serializer_class = CarSerializer
+
+
+class CarRetrieveUpdateDestroyView(generics.RetrieveUpdateDestroyAPIView):
     queryset = Car.objects.all()
     serializer_class = CarSerializer
 
@@ -29,69 +25,60 @@ class CargoListCreateView(generics.ListCreateAPIView):
     queryset = Cargo.objects.all()
     serializer_class = CargoSerializer
 
-    def create(self, request, *args, **kwargs):
-        serializer = CargoCreateSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        serializer.save()
+    def get_queryset(self):
+        queryset = super().get_queryset()
 
-        return Response(serializer.data, status=status.HTTP_201_CREATED)
+        queryset = queryset.select_related('pick_up_location', 'delivery_location')
+        queryset = queryset.annotate(
+            cars_count=Count(
+                'cars',
+                filter=Q(cargocar__distance__lte=450),
+            ),
+        )
+        queryset = queryset.prefetch_related('cars')  # Загрузка списка машин
+
+        for cargo in queryset:
+            cargo.cars.set(cargo.cargocar_set.filter(distance__lte=450).values_list('car', flat=True))
+
+        return queryset
+
+    def perform_create(self, serializer):
+        pick_up_zip = self.request.data.get('pick_up_location')['zip_code']
+        delivery_zip = self.request.data.get('delivery_location')['zip_code']
+        pick_up_location = Location.objects.get(zip_code=pick_up_zip)
+        delivery_location = Location.objects.get(zip_code=delivery_zip)
+        serializer.save(pick_up_location=pick_up_location, delivery_location=delivery_location)
 
 
 class CargoRetrieveUpdateDestroyView(generics.RetrieveUpdateDestroyAPIView):
     queryset = Cargo.objects.all()
     serializer_class = CargoSerializer
 
-    def get_serializer_class(self):
-        if self.request.method == 'PUT':
-            return CargoUpdateSerializer
-        return self.serializer_class
-
-    def update(self, request, *args, **kwargs):
-        partial = kwargs.pop('partial', False)
+    def retrieve(self, request, *args, **kwargs):
         instance = self.get_object()
+        serializer = self.get_serializer(instance)
+        data = serializer.data
 
-        if 'pickup_zip' in request.data:
-            pickup_zip = request.data.pop('pickup_zip')
-            pickup_location = get_object_or_404(Location, zip=pickup_zip)
-            request.data['pickup_location'] = pickup_location.id
+        # Получение списка номеров ВСЕХ машин с расстоянием до выбранного груза
+        cargo_cars = CargoCar.objects.filter(cargo_id=data['id'])
+        cars = []
+        for cargo_car in cargo_cars:
+            car_data = CarSerializer(cargo_car.car).data
+            car_data['distance'] = cargo_car.distance
+            cars.append(car_data)
+        data['cars'] = cars
 
-        if 'delivery_zip' in request.data:
-            delivery_zip = request.data.pop('delivery_zip')
-            delivery_location = get_object_or_404(Location, zip=delivery_zip)
-            request.data['delivery_location'] = delivery_location.id
-
-        serializer = self.get_serializer(instance, data=request.data, partial=partial)
-        serializer.is_valid(raise_exception=True)
-        self.perform_update(serializer)
-
-        if getattr(instance, '_prefetched_objects_cache', None):
-            instance._prefetched_objects_cache = {}
-
-        return Response(serializer.data)
+        return Response(data)
 
 
-class CargoFilterListView(generics.ListAPIView):
-    serializer_class = CargoSerializer
+class CargoCarListCreateView(generics.ListCreateAPIView):
+    queryset = CargoCar.objects.all()
+    serializer_class = CargoCarSerializer
 
-    def get_queryset(self):
-        miles = 450
 
-        subquery = Car.objects.filter(
-            Q(current_location=OuterRef('pickup_location')) | Q(current_location=OuterRef('delivery_location'))
-        ).annotate(
-            distance=geopy_distance(
-                'current_location__latitude',
-                'current_location__longitude',
-                'pickup_location__latitude',
-                'pickup_location__longitude',
-            ),
-        ).values('cargo').filter(distance__lte=miles)
-
-        queryset = Cargo.objects.annotate(
-            nearest_cars=Count(Subquery(subquery))
-        )
-
-        return queryset
+class CargoCarRetrieveUpdateDestroyView(generics.RetrieveUpdateDestroyAPIView):
+    queryset = CargoCar.objects.all()
+    serializer_class = CargoCarSerializer
 
 
 class CarLocationUpdateView(generics.UpdateAPIView):
@@ -99,11 +86,8 @@ class CarLocationUpdateView(generics.UpdateAPIView):
     serializer_class = CarSerializer
 
     def update(self, request, *args, **kwargs):
-        instance = self.get_object()
-
-        new_location = Location.objects.exclude(id=instance.current_location.id).order_by('?').first()
-        instance.current_location = new_location
-        instance.save()
-
-        serializer = self.get_serializer(instance)
-        return Response(serializer.data)
+        car = self.get_object()
+        location = Location.objects.order_by('?').first()
+        car.current_location = location
+        car.save()
+        return Response(status=status.HTTP_200_OK)

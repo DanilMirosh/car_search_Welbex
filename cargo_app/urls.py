@@ -1,18 +1,18 @@
 from django.urls import path
 from .views import (
-    LocationListCreateView,
-    CarListCreateView,
-    CargoListCreateView,
-    CargoRetrieveUpdateDestroyView,
-    CargoFilterListView,
-    CarLocationUpdateView,
+    LocationListView, CarListView, CarRetrieveUpdateDestroyView,
+    CargoListCreateView, CargoRetrieveUpdateDestroyView,
+    CargoCarListCreateView, CargoCarRetrieveUpdateDestroyView,
+    CarLocationUpdateView
 )
 
 urlpatterns = [
-    path('locations/', LocationListCreateView.as_view(), name='location-list-create'),
-    path('car/', CarListCreateView.as_view(), name='machine-list-create'),
-    path('cargos/', CargoListCreateView.as_view(), name='cargo-list-create'),
-    path('cargos/<int:pk>/', CargoRetrieveUpdateDestroyView.as_view(), name='cargo-retrieve-update-destroy'),
-    path('cargos/filter/', CargoFilterListView.as_view(), name='cargo-filter-list'),
-    path('car/<int:pk>/update-location/', CarLocationUpdateView.as_view(), name='car-update-location'),
+    path('locations/', LocationListView.as_view(), name='location-list'),
+    path('cars/', CarListView.as_view(), name='car-list'),
+    path('cars/<int:pk>/', CarRetrieveUpdateDestroyView.as_view(), name='car-detail'),
+    path('cargos/', CargoListCreateView.as_view(), name='cargo-list'),
+    path('cargos/<int:pk>/', CargoRetrieveUpdateDestroyView.as_view(), name='cargo-detail'),
+    path('cargocars/', CargoCarListCreateView.as_view(), name='cargocar-list'),
+    path('cargocars/<int:pk>/', CargoCarRetrieveUpdateDestroyView.as_view(), name='cargocar-detail'),
+    path('cars/<int:pk>/update_location/', CarLocationUpdateView.as_view(), name='car-update-location'),
 ]
