@@ -1,17 +1,17 @@
 import random
 from django.core.management.base import BaseCommand
-from cargo_app.models import Car, Location
+from cargo_app.models import Car
 
 
 class Command(BaseCommand):
     help = 'Generate default cars'
 
     def handle(self, *args, **options):
-        locations = list(Location.objects.all())
         cars = [
             Car(
                 unique_number=f"{random.randint(1000, 9999)}{random.choice('ABCDEFGHIJKLMNOPQRSTUVWXYZ')}",
-                current_location=random.choice(locations),
+                latitude=random.uniform(-90, 90),
+                longitude=random.uniform(-180, 180),
                 capacity=random.randint(500, 1000)
             )
             for _ in range(20)

@@ -1,4 +1,4 @@
-from django.db.models import Count, Q
+from geopy.distance import geodesic
 from rest_framework import generics, status
 from rest_framework.response import Response
 
@@ -25,50 +25,62 @@ class CargoListCreateView(generics.ListCreateAPIView):
     queryset = Cargo.objects.all()
     serializer_class = CargoSerializer
 
-    def get_queryset(self):
-        queryset = super().get_queryset()
+    def create(self, request, *args, **kwargs):
+        pick_up_location_data = request.data.get('pick_up_location')
+        delivery_location_data = request.data.get('delivery_location')
 
-        queryset = queryset.select_related('pick_up_location', 'delivery_location')
-        queryset = queryset.annotate(
-            cars_count=Count(
-                'cars',
-                filter=Q(cargocar__distance__lte=450),
-            ),
-        )
-        queryset = queryset.prefetch_related('cars')  # Загрузка списка машин
-
-        for cargo in queryset:
-            cargo.cars.set(cargo.cargocar_set.filter(distance__lte=450).values_list('car', flat=True))
-
-        return queryset
-
-    def perform_create(self, serializer):
-        pick_up_zip = self.request.data.get('pick_up_location')['zip_code']
-        delivery_zip = self.request.data.get('delivery_location')['zip_code']
+        pick_up_zip = pick_up_location_data['zip_code']
+        delivery_zip = delivery_location_data['zip_code']
         pick_up_location = Location.objects.get(zip_code=pick_up_zip)
         delivery_location = Location.objects.get(zip_code=delivery_zip)
-        serializer.save(pick_up_location=pick_up_location, delivery_location=delivery_location)
+
+        cars_within_distance = []
+        pick_up_coordinates = (pick_up_location.latitude, pick_up_location.longitude)
+
+        for car in Car.objects.all():
+            car_coordinates = (car.latitude, car.longitude)
+            distance = geodesic(pick_up_coordinates, car_coordinates).miles
+
+            if distance <= 450:
+                cars_within_distance.append(car)
+
+        cargo_data = {
+            'pick_up_location': {
+                'city': pick_up_location.city,
+                'state': pick_up_location.state,
+                'zip_code': pick_up_location.zip_code,
+                'latitude': pick_up_location.latitude,
+                'longitude': pick_up_location.longitude
+            },
+            'delivery_location': {
+                'city': delivery_location.city,
+                'state': delivery_location.state,
+                'zip_code': delivery_location.zip_code,
+                'latitude': delivery_location.latitude,
+                'longitude': delivery_location.longitude
+            },
+            'cars': cars_within_distance,
+            'weight': request.data.get('weight'),
+            'description': request.data.get('description')
+        }
+
+        serializer = self.get_serializer(data=cargo_data)
+        serializer.is_valid(raise_exception=True)
+        self.perform_create(serializer)
+        headers = self.get_success_headers(serializer.data)
+        return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
 
 
 class CargoRetrieveUpdateDestroyView(generics.RetrieveUpdateDestroyAPIView):
     queryset = Cargo.objects.all()
     serializer_class = CargoSerializer
 
-    def retrieve(self, request, *args, **kwargs):
+    def partial_update(self, request, *args, **kwargs):
         instance = self.get_object()
-        serializer = self.get_serializer(instance)
-        data = serializer.data
-
-        # Получение списка номеров ВСЕХ машин с расстоянием до выбранного груза
-        cargo_cars = CargoCar.objects.filter(cargo_id=data['id'])
-        cars = []
-        for cargo_car in cargo_cars:
-            car_data = CarSerializer(cargo_car.car).data
-            car_data['distance'] = cargo_car.distance
-            cars.append(car_data)
-        data['cars'] = cars
-
-        return Response(data)
+        serializer = self.get_serializer(instance, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        self.perform_update(serializer)
+        return Response(serializer.data)
 
 
 class CargoCarListCreateView(generics.ListCreateAPIView):

@@ -15,7 +15,8 @@ class Location(models.Model):
 class Car(models.Model):
     unique_number = models.CharField(max_length=10)
     capacity = models.IntegerField()
-    current_location = models.ForeignKey('Location', related_name='cars', on_delete=models.CASCADE)
+    latitude = models.DecimalField(max_digits=9, decimal_places=6)
+    longitude = models.DecimalField(max_digits=9, decimal_places=6)
 
     def __str__(self):
         return f'Car {self.unique_number}'
