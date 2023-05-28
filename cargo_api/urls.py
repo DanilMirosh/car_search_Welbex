@@ -1,10 +1,7 @@
-from django.urls import path
-from cargo_app.views import CargoListCreateView, CargoDetailView, CarListCreateView, CarDetailView
-
+from django.contrib import admin
+from django.urls import path, include
 
 urlpatterns = [
-    path('cargos/', CargoListCreateView.as_view(), name='cargo-list-create'),
-    path('cargos/<int:pk>/', CargoDetailView.as_view(), name='cargo-detail'),
-    path('cars/', CarListCreateView.as_view(), name='car-list-create'),
-    path('cars/<int:pk>/', CarDetailView.as_view(), name='car-detail'),
+    path('admin/', admin.site.urls),
+    path('', include('cargo_app.urls')),
 ]
