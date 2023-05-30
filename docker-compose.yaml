@@ -1,17 +1,33 @@
-version: '3'
+version: '3.8'
+
 services:
   db:
-    image: postgres
-    environment:
-      - POSTGRES_DB=postgres
-      - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=postgres
-  web:
-    build: ./cargo_api
-    command: python manage.py runserver 0.0.0.0:8000
+    image: postgis/postgis:13-3.1
     volumes:
-      - ./cargo_api:/code
+      - postgres_data:/var/lib/postgresql/data
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: postgres
+    restart: always
+    healthcheck:
+      test: pg_isready -U postgres -d postgres
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
     ports:
       - 8000:8000
     depends_on:
       - db
+    command: sh -c "sleep 10 && python manage.py migrate && python manage.py generate_default_cars && python manage.py import_locations && python manage.py runserver 0.0.0.0:8000"
+
+
+
+volumes:
+  postgres_data:
