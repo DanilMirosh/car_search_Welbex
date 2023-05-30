@@ -28,6 +28,5 @@ services:
     command: sh -c "sleep 10 && python manage.py migrate && python manage.py generate_default_cars && python manage.py import_locations && python manage.py runserver 0.0.0.0:8000"
 
 
-
 volumes:
   postgres_data:
